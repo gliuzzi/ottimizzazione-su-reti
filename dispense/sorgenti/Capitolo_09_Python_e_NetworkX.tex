@@ -1,0 +1,319 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}\usepackage[utf8]{inputenc}\usepackage[provide=*,italian]{babel}
+\usepackage{lmodern,microtype,geometry}\geometry{margin=2.5cm}
+\usepackage{amsmath,amssymb,amsthm,mathtools,booktabs,array,longtable,xcolor,enumitem,tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usepackage[most]{tcolorbox}\usepackage{listings,hyperref,fancyhdr}
+\definecolor{sapienzared}{RGB}{130,0,36}\definecolor{softred}{RGB}{249,241,243}
+\definecolor{softblue}{RGB}{239,246,252}\definecolor{softgray}{RGB}{245,245,245}\definecolor{codegreen}{RGB}{25,110,65}
+\hypersetup{colorlinks=true,linkcolor=sapienzared,urlcolor=sapienzared,pdftitle={Laboratorio Python e NetworkX},pdfauthor={Giampaolo Liuzzi}}
+\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\small Ottimizzazione su Reti}\fancyhead[R]{\small Capitolo 9}\fancyfoot[C]{\thepage}\renewcommand{\headrulewidth}{0.4pt}
+\newtheorem{definition}{Definizione}[section]\newtheorem{proposition}[definition]{Proposizione}
+\newtcolorbox{learningbox}{colback=softred,colframe=sapienzared,title=Obiettivi di apprendimento,fonttitle=\bfseries,boxrule=0.8pt,arc=1.5mm}
+\newtcolorbox{examplebox}[1]{colback=softblue,colframe=blue!55!black,title=#1,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{notationbox}{colback=softgray,colframe=black!55,title=Convenzioni del progetto,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{warningbox}{colback=yellow!9,colframe=orange!65!black,title=Attenzione,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{networkxbox}{colback=softgray,colframe=black!55,title=Python/NetworkX,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\lstdefinestyle{python}{language=Python,basicstyle=\ttfamily\small,keywordstyle=\color{blue!65!black}\bfseries,commentstyle=\color{codegreen},stringstyle=\color{sapienzared},backgroundcolor=\color{softgray},frame=single,rulecolor=\color{black!25},showstringspaces=false,breaklines=true,columns=fullflexible}
+
+\begin{document}\hypersetup{pageanchor=false}
+\begin{titlepage}\centering\vspace*{1.6cm}
+{\color{sapienzared}\rule{\textwidth}{1.2pt}}\\[1.1cm]{\Large Ottimizzazione su Reti}\\[0.35cm]
+{\huge\bfseries Capitolo 9}\\[0.45cm]{\LARGE\bfseries Laboratorio Python e NetworkX}\\[1.1cm]
+{\color{sapienzared}\rule{0.72\textwidth}{0.8pt}}\\[1.1cm]
+{\large Corso di Laurea Magistrale in Ingegneria Gestionale}\\[0.25cm]{\large Sapienza Università di Roma}\\[1.2cm]
+{\large Giampaolo Liuzzi}\\[0.25cm]{\normalsize Dipartimento di Ingegneria Informatica, Automatica e Gestionale}
+\vfill{\small Versione preliminare per uso didattico}\end{titlepage}
+\hypersetup{pageanchor=true}\pagenumbering{roman}\tableofcontents\newpage\pagenumbering{arabic}
+
+\begin{learningbox}
+Al termine del capitolo lo studente dovrebbe essere in grado di:
+\begin{itemize}[nosep]
+\item rappresentare in modo uniforme grafi e istanze di ottimizzazione;
+\item separare dati, algoritmo, verifica e visualizzazione;
+\item controllare bilanci, capacità, costi e certificati di ottimalità;
+\item usare correttamente le principali funzioni NetworkX;
+\item realizzare visualizzazioni leggibili di flussi, cammini, alberi e tagli;
+\item scrivere test automatici per piccole istanze;
+\item organizzare notebook e codice in una repository riproducibile.
+\end{itemize}
+\end{learningbox}
+
+\section{Obiettivi del laboratorio}
+Il laboratorio computazionale non serve soltanto a ottenere un numero. Una buona soluzione deve rendere espliciti:
+\begin{enumerate}
+\item il modello matematico rappresentato dal grafo;
+\item le convenzioni usate per nodi, archi e attributi;
+\item l'algoritmo o la funzione di libreria impiegata;
+\item i controlli indipendenti sul risultato;
+\item un certificato di ottimalità quando disponibile.
+\end{enumerate}
+
+NetworkX offre strutture dati e algoritmi affidabili, ma non verifica se il grafo costruito descrive correttamente il problema reale. Modellazione e validazione restano responsabilità dell'utente.
+
+\section{Ambiente di lavoro}
+Per gli esempi sono sufficienti Python, NetworkX e Matplotlib; NumPy e pandas sono utili per matrici e tabelle.
+\begin{lstlisting}[style=python,caption={Importazioni comuni}]
+import networkx as nx
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+\end{lstlisting}
+
+È opportuno registrare le versioni nel file delle dipendenze e usare un ambiente virtuale. I notebook devono poter essere eseguiti dall'inizio alla fine senza operazioni manuali nascoste.
+
+\begin{networkxbox}
+\texttt{nx.Graph} rappresenta grafi non orientati, \texttt{nx.DiGraph} grafi orientati. \texttt{MultiGraph} e \texttt{MultiDiGraph} ammettono archi paralleli, ma non tutte le funzioni di ottimizzazione li accettano.
+\end{networkxbox}
+
+\section{Convenzioni comuni per i dati}
+Adottiamo nomi di attributi coerenti con NetworkX:
+\begin{center}\begin{tabular}{lll}\toprule
+Oggetto&Attributo&Significato\\\midrule
+nodo&\texttt{demand}&$b_i$: positivo domanda, negativo offerta\\
+arco&\texttt{weight}&costo, lunghezza o durata\\
+arco&\texttt{capacity}&capacità superiore\\
+arco&\texttt{lower}&limite inferiore, gestito esplicitamente\\
+arco&\texttt{flow}&flusso candidato o calcolato\\
+\bottomrule\end{tabular}\end{center}
+
+\begin{notationbox}
+La matrice di incidenza ha $-1$ all'origine e $+1$ alla destinazione. Pertanto
+\[
+Ax=b,\qquad b_i>0\text{ domanda},\qquad b_i<0\text{ offerta}.
+\]
+L'attributo \texttt{demand} coincide direttamente con $b_i$: non deve essere cambiato di segno.
+\end{notationbox}
+
+\subsection{Liste di archi e tabelle}
+Una piccola istanza può essere definita con tuple; per dati esterni è preferibile una tabella CSV con colonne stabili.
+\begin{lstlisting}[style=python,caption={Costruzione da una tabella di archi}]
+edges = pd.DataFrame([
+    {"tail": 1, "head": 2, "cost": 4, "capacity": 10},
+    {"tail": 1, "head": 3, "cost": 2, "capacity": 7},
+    {"tail": 2, "head": 3, "cost": 1, "capacity": 5},
+])
+
+G = nx.DiGraph()
+for row in edges.itertuples(index=False):
+    G.add_edge(row.tail, row.head,
+               weight=row.cost, capacity=row.capacity)
+\end{lstlisting}
+
+\section{Validazione dell'istanza}
+I controlli devono precedere la chiamata all'algoritmo. Verifichiamo almeno:
+\begin{itemize}
+\item tipo di grafo e presenza di nodi e archi;
+\item attributi obbligatori e valori numerici finiti;
+\item capacità non negative e limiti inferiori non superiori alle capacità;
+\item somma delle domande uguale a zero per il flusso a costo minimo;
+\item esistenza dei nodi sorgente e destinazione;
+\item aciclicità per algoritmi su DAG e CPM;
+\item non negatività dei pesi prima di usare Dijkstra.
+\end{itemize}
+
+\begin{lstlisting}[style=python,caption={Validatore essenziale per una rete di flusso}]
+def validate_flow_instance(G):
+    if not G.is_directed():
+        raise ValueError("La rete deve essere orientata")
+
+    total_demand = sum(G.nodes[v].get("demand", 0) for v in G)
+    if total_demand != 0:
+        raise ValueError("La somma delle domande deve essere zero")
+
+    for i, j, data in G.edges(data=True):
+        cap = data.get("capacity", float("inf"))
+        low = data.get("lower", 0)
+        if low < 0 or cap < low:
+            raise ValueError(f"Limiti non validi su {(i, j)}")
+\end{lstlisting}
+
+\section{Verifica indipendente delle soluzioni}
+
+\subsection{Bilanci e capacità}
+Un flusso candidato va controllato senza affidarsi al fatto che la funzione sia terminata correttamente.
+\begin{lstlisting}[style=python,caption={Verifica di un flusso nella convenzione $Ax=b$}]
+def check_flow(G, flow, tol=1e-9):
+    balance = {v: 0.0 for v in G}
+    cost = 0.0
+
+    for i, j, data in G.edges(data=True):
+        x = flow[i][j]
+        low = data.get("lower", 0.0)
+        cap = data.get("capacity", float("inf"))
+        if x < low - tol or x > cap + tol:
+            return False, None
+        balance[i] -= x
+        balance[j] += x
+        cost += data.get("weight", 0.0) * x
+
+    ok = all(abs(balance[v] - G.nodes[v].get("demand", 0.0))
+             <= tol for v in G)
+    return ok, cost
+\end{lstlisting}
+
+\subsection{Certificati specifici}
+\begin{center}\begin{tabular}{ll}\toprule
+Problema&Controllo o certificato\\\midrule
+flusso a costo minimo&bilanci, limiti, costo e costi ridotti\\
+massimo flusso&valore del flusso uguale alla capacità del taglio\\
+cammino minimo&costo del cammino e disuguaglianze di Bellman\\
+albero&connessione, aciclicità e $n-1$ spigoli\\
+CPM&ricorrenze avanti/indietro e slittamenti non negativi\\
+\bottomrule\end{tabular}\end{center}
+
+\section{Mappa delle principali funzioni NetworkX}
+\begin{center}\small
+\begin{tabular}{lll}\toprule
+Problema&Funzione&Attributo\\\midrule
+componenti connesse&\texttt{connected\_components}&--\\
+ordinamento topologico&\texttt{topological\_sort}&--\\
+albero ricoprente minimo&\texttt{minimum\_spanning\_tree}&\texttt{weight}\\
+flusso a costo minimo&\texttt{network\_simplex}&\texttt{demand}, \texttt{weight}, \texttt{capacity}\\
+massimo flusso&\texttt{maximum\_flow}&\texttt{capacity}\\
+taglio minimo&\texttt{minimum\_cut}&\texttt{capacity}\\
+cammino minimo&\texttt{shortest\_path}&\texttt{weight}\\
+Dijkstra&\texttt{single\_source\_dijkstra}&\texttt{weight}\\
+Bellman-Ford&\texttt{single\_source\_bellman\_ford}&\texttt{weight}\\
+cammino massimo in DAG&\texttt{dag\_longest\_path}&\texttt{weight}\\
+\bottomrule\end{tabular}\end{center}
+
+\begin{warningbox}
+Il nome predefinito dell'attributo è spesso parte dell'interfaccia. Se i dati usano \texttt{cost} ma la funzione legge \texttt{weight}, bisogna passare il parametro appropriato o rinominare l'attributo. Un attributo ignorato può produrre un risultato formalmente valido ma riferito a un problema diverso.
+\end{warningbox}
+
+\section{Separare algoritmo e libreria}
+Per ciascun argomento è utile affiancare:
+\begin{enumerate}
+\item una versione didattica, breve e tracciabile;
+\item la funzione NetworkX per il confronto;
+\item una funzione indipendente di verifica.
+\end{enumerate}
+
+La versione didattica deve restituire non solo la soluzione finale, ma anche informazioni sulle iterazioni: nodi etichettati, archi rilassati, cammini aumentanti, alberi di base o costi ridotti. La visualizzazione non deve essere incorporata nel nucleo algoritmico: è meglio restituire dati strutturati e disegnarli in una funzione separata.
+
+\begin{examplebox}{Schema di una funzione didattica}
+Una funzione per Dijkstra può restituire \texttt{dist}, \texttt{pred} e una lista \texttt{trace}. Ogni elemento di \texttt{trace} contiene il nodo reso permanente e una copia delle etichette dopo i rilassamenti. Lo stesso schema permette di costruire tabelle o animazioni senza modificare l'algoritmo.
+\end{examplebox}
+
+\section{Visualizzazione delle reti}
+Una figura efficace deve distinguere struttura e soluzione:
+\begin{itemize}
+\item posizione dei nodi salvata e riutilizzata;
+\item etichette degli archi coerenti, per esempio costo/capacità o flusso/capacità;
+\item cammino, albero o taglio evidenziato con colore e spessore;
+\item archi non rilevanti attenuati, senza eliminare informazione necessaria.
+\end{itemize}
+
+\begin{lstlisting}[style=python,caption={Evidenziare un cammino}]
+def draw_path(G, path, weight="weight"):
+    pos = nx.spring_layout(G, seed=7)
+    path_edges = set(zip(path, path[1:]))
+    colors = ["#820024" if e in path_edges else "#bbbbbb"
+              for e in G.edges]
+    widths = [2.8 if e in path_edges else 1.0 for e in G.edges]
+
+    nx.draw(G, pos, with_labels=True, node_color="#f9f1f3",
+            edge_color=colors, width=widths, arrows=True)
+    labels = nx.get_edge_attributes(G, weight)
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
+    plt.tight_layout()
+\end{lstlisting}
+
+Per un taglio minimo si colorano diversamente i nodi di $W$ e $\overline W$; per un flusso si usa l'etichetta $x_{ij}/u_{ij}$; per il CPM si evidenziano gli archi a slittamento nullo.
+
+\section{Test automatici}
+I test su istanze piccole proteggono da errori di segno e regressioni. Sono particolarmente utili proprietà che devono valere per ogni soluzione.
+\begin{lstlisting}[style=python,caption={Esempi di test con pytest}]
+def test_maxflow_equals_mincut(G):
+    value, _ = nx.maximum_flow(G, "s", "t")
+    cut_value, _ = nx.minimum_cut(G, "s", "t")
+    assert value == cut_value
+
+def test_shortest_path_cost(G):
+    path = nx.shortest_path(G, "s", "t", weight="weight")
+    cost = nx.path_weight(G, path, weight="weight")
+    assert cost == nx.shortest_path_length(
+        G, "s", "t", weight="weight"
+    )
+
+def test_tree_size(T):
+    assert nx.is_tree(T)
+    assert T.number_of_edges() == T.number_of_nodes() - 1
+\end{lstlisting}
+
+Con dati in virgola mobile si usa una tolleranza, per esempio \texttt{pytest.approx} o \texttt{math.isclose}. È utile includere anche casi non validi: domanda sbilanciata, capacità negativa, DAG con ciclo e Dijkstra con peso negativo.
+
+\section{Struttura della repository GitHub}
+Una possibile organizzazione è:
+\begin{verbatim}
+ottimizzazione-su-reti/
+|-- README.md
+|-- pyproject.toml
+|-- src/network_optimization/
+|   |-- validation.py
+|   |-- visualization.py
+|   |-- flows.py
+|   |-- shortest_paths.py
+|   `-- cpm.py
+|-- notebooks/
+|   |-- 01_grafi.ipynb
+|   |-- 02_flusso_costo_minimo.ipynb
+|   |-- 03_massimo_flusso.ipynb
+|   |-- 04_cammini_minimi.ipynb
+|   `-- 05_cpm.ipynb
+|-- data/
+|-- tests/
+`-- exercises/
+\end{verbatim}
+
+Il \texttt{README} dovrebbe indicare installazione, convenzioni, ordine dei notebook e licenza. I notebook illustrano gli esempi; le funzioni riutilizzabili appartengono a \texttt{src}; i test non vanno nascosti nei notebook.
+
+\section{Riproducibilità e stile}
+\begin{itemize}
+\item fissare il seme dei layout casuali;
+\item non dipendere dall'ordine accidentale di nodi o archi;
+\item evitare variabili globali e celle eseguite fuori ordine;
+\item aggiungere docstring, type hints e nomi coerenti;
+\item salvare dati di esempio in formati testuali semplici;
+\item confrontare implementazione didattica e libreria senza assumere che restituiscano lo stesso cammino in caso di ottimi multipli.
+\end{itemize}
+
+\section{Errori frequenti}
+\begin{enumerate}
+\item Cambiare segno alle domande prima di passarle a NetworkX.
+\item Usare \texttt{Graph} quando il modello richiede archi orientati.
+\item Confondere \texttt{weight} e \texttt{capacity}.
+\item Fidarsi del risultato senza verificare bilanci e vincoli.
+\item Confrontare cammini o alberi invece dei valori quando esistono ottimi multipli.
+\item Incorporare disegno, input e algoritmo nella stessa funzione.
+\item Usare Dijkstra senza controllare i pesi.
+\item Costruire il CPM su un grafo ciclico.
+\item Non fissare il layout, ottenendo figure diverse a ogni esecuzione.
+\end{enumerate}
+
+\section{Esercizi di laboratorio}
+\textbf{Esercizio 9.1 -- Importazione.} Definire un formato CSV per nodi e archi, importare una rete e validarne gli attributi.
+
+\medskip\textbf{Esercizio 9.2 -- Flusso.} Risolvere un flusso a costo minimo con \texttt{network\_simplex} e verificarne indipendentemente bilanci e costo.
+
+\medskip\textbf{Esercizio 9.3 -- Certificato.} Calcolare massimo flusso e taglio minimo, visualizzando la partizione e gli archi del taglio.
+
+\medskip\textbf{Esercizio 9.4 -- Confronto.} Implementare Dijkstra didattico con traccia e confrontare valori e predecessori con NetworkX.
+
+\medskip\textbf{Esercizio 9.5 -- CPM.} Produrre una tabella pandas con $ES$, $EF$, $LS$, $LF$ e slittamento di ogni attività.
+
+\medskip\textbf{Esercizio 9.6 -- Test.} Scrivere almeno un test positivo e uno negativo per ciascun algoritmo.
+
+\section{Sintesi del capitolo}
+\begin{learningbox}\begin{itemize}[nosep]
+\item Una convenzione comune rende interoperabili modelli, esempi e notebook.
+\item NetworkX risolve il grafo fornito, non verifica la correttezza del modello.
+\item Ogni soluzione dovrebbe essere accompagnata da controlli e certificati.
+\item Algoritmo, validazione e visualizzazione vanno mantenuti separati.
+\item I test automatici rendono affidabili le implementazioni didattiche.
+\item La repository deve distinguere codice riutilizzabile, notebook, dati ed esercizi.
+\end{itemize}\end{learningbox}
+
+\paragraph{Passo successivo.} La struttura proposta costituisce la base naturale per realizzare la pagina GitHub del corso e pubblicare progressivamente notebook, istanze ed esercizi.
+\end{document}

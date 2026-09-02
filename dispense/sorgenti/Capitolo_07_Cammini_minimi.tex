@@ -1,0 +1,356 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[provide=*,italian]{babel}
+\usepackage{lmodern,microtype,geometry}
+\geometry{margin=2.5cm}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs,array,longtable}
+\usepackage{xcolor,enumitem,tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usepackage[most]{tcolorbox}
+\usepackage{listings,hyperref,fancyhdr}
+
+\definecolor{sapienzared}{RGB}{130,0,36}
+\definecolor{softred}{RGB}{249,241,243}
+\definecolor{softblue}{RGB}{239,246,252}
+\definecolor{softgray}{RGB}{245,245,245}
+\definecolor{codegreen}{RGB}{25,110,65}
+\hypersetup{colorlinks=true,linkcolor=sapienzared,urlcolor=sapienzared,
+pdftitle={Il problema dei cammini minimi},pdfauthor={Giampaolo Liuzzi}}
+
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small Ottimizzazione su Reti}
+\fancyhead[R]{\small Capitolo 7}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\newtheorem{definition}{Definizione}[section]
+\newtheorem{theorem}[definition]{Teorema}
+\newtheorem{proposition}[definition]{Proposizione}
+\newtheorem{observation}[definition]{Osservazione}
+\newtcolorbox{learningbox}{colback=softred,colframe=sapienzared,title=Obiettivi di apprendimento,fonttitle=\bfseries,boxrule=0.8pt,arc=1.5mm}
+\newtcolorbox{examplebox}[1]{colback=softblue,colframe=blue!55!black,title=#1,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{notationbox}{colback=softgray,colframe=black!55,title=Registro delle notazioni,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{warningbox}{colback=yellow!9,colframe=orange!65!black,title=Attenzione,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{networkxbox}{colback=softgray,colframe=black!55,title=Python/NetworkX,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\lstdefinestyle{python}{language=Python,basicstyle=\ttfamily\small,keywordstyle=\color{blue!65!black}\bfseries,commentstyle=\color{codegreen},stringstyle=\color{sapienzared},backgroundcolor=\color{softgray},frame=single,rulecolor=\color{black!25},showstringspaces=false,breaklines=true,columns=fullflexible}
+
+\newcommand{\V}{\mathcal{V}}
+\newcommand{\E}{\mathcal{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\dist}{\operatorname{dist}}
+
+\begin{document}
+\hypersetup{pageanchor=false}
+\begin{titlepage}
+\centering\vspace*{1.6cm}
+{\color{sapienzared}\rule{\textwidth}{1.2pt}}\\[1.1cm]
+{\Large Ottimizzazione su Reti}\\[0.35cm]
+{\huge\bfseries Capitolo 7}\\[0.45cm]
+{\LARGE\bfseries Il problema dei cammini minimi}\\[1.1cm]
+{\color{sapienzared}\rule{0.72\textwidth}{0.8pt}}\\[1.1cm]
+{\large Corso di Laurea Magistrale in Ingegneria Gestionale}\\[0.25cm]
+{\large Sapienza Università di Roma}\\[1.2cm]
+{\large Giampaolo Liuzzi}\\[0.25cm]
+{\normalsize Dipartimento di Ingegneria Informatica, Automatica e Gestionale}
+\vfill{\small Versione preliminare per uso didattico}
+\end{titlepage}
+\hypersetup{pageanchor=true}
+\pagenumbering{roman}\tableofcontents\newpage\pagenumbering{arabic}
+
+\begin{learningbox}
+Al termine del capitolo lo studente dovrebbe essere in grado di:
+\begin{itemize}[nosep]
+\item formulare il cammino minimo come flusso a costo minimo;
+\item interpretare le variabili duali come etichette di distanza;
+\item applicare correttamente l'operazione di rilassamento;
+\item calcolare cammini minimi su un DAG;
+\item scegliere tra Dijkstra e Bellman-Ford in base ai costi degli archi;
+\item riconoscere e interpretare un ciclo di costo negativo;
+\item ricostruire i cammini mediante i predecessori e usare NetworkX.
+\end{itemize}
+\end{learningbox}
+
+\section{Il problema del cammino minimo}
+
+Sia $G=(\V,\E)$ un grafo orientato e sia $c_{ij}\in\R$ il costo, la lunghezza o il tempo associato all'arco $(i,j)$. Dati un'origine $s$ e una destinazione $t$, il costo di un cammino orientato $P$ è
+\[
+C(P)=\sum_{(i,j)\in P}c_{ij}.
+\]
+Il problema consiste nel determinare
+\[
+\min\{C(P):P\text{ è un cammino orientato da }s\text{ a }t\}.
+\]
+In un grafo non orientato ogni spigolo $\{i,j\}$ può essere sostituito da due archi $(i,j)$ e $(j,i)$, eventualmente con costi diversi.
+
+\begin{warningbox}
+Se un ciclo di costo negativo è raggiungibile da $s$ e da esso è raggiungibile $t$, il problema della passeggiata minima $s$-$t$ è illimitato inferiormente: ripetendo il ciclo il costo tende a $-\infty$. In assenza di tali cicli, esiste un cammino minimo semplice.
+\end{warningbox}
+
+\section{Formulazione come flusso a costo minimo}
+
+Inviare un'unità di flusso da $s$ a $t$ produce la formulazione
+\begin{equation}\label{eq:sp}
+\min\ c^\top x\qquad\text{s.t.}\qquad Ax=b,\quad x\geq0,
+\end{equation}
+dove, coerentemente con NetworkX,
+\[
+b_s=-1,\qquad b_t=1,\qquad b_i=0\quad i\notin\{s,t\}.
+\]
+La totale unimodularità della matrice di incidenza garantisce, per dati interi, l'esistenza di una soluzione di base intera. In assenza di cicli negativi, una soluzione ottima può essere scelta come vettore di incidenza di un cammino $s$-$t$.
+
+Il duale di \eqref{eq:sp} è
+\begin{equation}\label{eq:dual}
+\max\ d_t-d_s\qquad\text{s.t.}\qquad d_j-d_i\leq c_{ij}quad\forall(i,j)\in\E.
+\end{equation}
+Poiché i potenziali sono definiti a meno di una costante, poniamo $d_s=0$. I vincoli diventano
+\[
+d_j\leq d_i+c_{ij}.
+\]
+Il massimo valore ammissibile di $d_t$ è esattamente la distanza minima da $s$ a $t$.
+
+\begin{examplebox}{Debole dualità lungo un cammino}
+Sommando i vincoli duali sugli archi di un cammino $P$ da $s$ a $t$ si ottiene
+\[
+d_t-d_s\leq C(P).
+\]
+Ogni vettore di etichette ammissibile fornisce dunque un limite inferiore al costo di ogni cammino. Quando l'uguaglianza vale sugli archi del cammino scelto, primale e duale certificano l'ottimalità.
+\end{examplebox}
+
+\section{Da una sorgente a tutti i nodi}
+
+Per calcolare simultaneamente le distanze da $s$ a tutti i nodi, si può inviare un'unità a ciascun nodo:
+\[
+b_s=-(n-1),\qquad b_i=1\quad i\neq s.
+\]
+Il duale diventa
+\[
+\max\sum_{i\neq s}d_i
+\qquad\text{s.t.}\qquad d_j\leq d_i+c_{ij},\quad d_s=0.
+\]
+Le etichette ottime $d_i^*$ sono le distanze minime da $s$. La formulazione spiega perché gli stessi potenziali compaiono nel simplesso su reti e negli algoritmi dei cammini minimi.
+
+\begin{proposition}[Sottostruttura ottima]
+Ogni sottocammino di un cammino minimo è a sua volta un cammino minimo tra i suoi estremi.
+\end{proposition}
+
+Se un cammino minimo verso $j$ termina con l'arco $(i,j)$, allora
+\[
+d_j^*=d_i^*+c_{ij}.
+\]
+Pertanto, per ogni nodo raggiungibile $j\neq s$, vale l'equazione di Bellman
+\begin{equation}\label{eq:bellman}
+d_j^*=\min_{(i,j)\in\E}\{d_i^*+c_{ij}\}.
+\end{equation}
+
+\section{Rilassamento e predecessori}
+
+Gli algoritmi mantengono etichette $d_j$ che rappresentano i migliori costi finora noti. Rilassare l'arco $(i,j)$ significa eseguire
+\[
+\text{se }d_j>d_i+c_{ij},\quad
+d_j\leftarrow d_i+c_{ij},\qquad \pi_j\leftarrow i.
+\]
+Il predecessore $\pi_j$ consente di ricostruire il cammino risalendo da $j$ fino a $s$. In caso di parità, predecessori diversi possono descrivere cammini minimi differenti.
+
+\begin{examplebox}{Un singolo rilassamento}
+Se $d_i=7$, $c_{ij}=3$ e $d_j=13$, passando per $i$ si ottiene $10<13$: la nuova etichetta è $d_j=10$ e il predecessore diventa $\pi_j=i$. Se invece $d_j=9$, l'arco non produce alcun miglioramento.
+\end{examplebox}
+
+\section{Cammini minimi nei DAG}
+
+Sia $G$ un grafo orientato aciclico e sia $v_1,\ldots,v_n$ un ordinamento topologico con $v_1=s$. Si inizializza $d_s=0$ e $d_v=+\infty$ per $v\neq s$, quindi si rilassano gli archi uscenti dai nodi nell'ordine topologico.
+
+Quando si elabora $v_k$, tutti i suoi possibili predecessori sono già stati elaborati; l'etichetta di $v_k$ è quindi definitiva. La complessità, inclusa la numerazione topologica, è
+\[
+O(|\V|+|\E|).
+\]
+L'algoritmo è corretto anche con costi negativi, perché un DAG non contiene cicli.
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Struttura & Costi ammessi & Complessità\\
+\midrule
+DAG & anche negativi & $O(n+m)$\\
+grafo generale, costi non negativi & $c_{ij}\geq0$ & Dijkstra\\
+grafo generale & anche negativi & Bellman-Ford\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Algoritmo di Dijkstra}
+
+Dijkstra richiede costi non negativi. Mantiene un insieme $S$ di nodi con etichetta permanente e un insieme $T=\V\setminus S$ di nodi con etichetta provvisoria.
+
+\begin{enumerate}
+\item Porre $d_s=0$, $d_v=+\infty$ per $v\neq s$, $S=\varnothing$.
+\item Scegliere in $T$ un nodo $j$ di etichetta minima.
+\item Rendere permanente $d_j$ e porre $S\leftarrow S\cup\{j\}$.
+\item Rilassare tutti gli archi $(j,i)$ con $i\in T$.
+\item Ripetere finché $T$ è vuoto o la minima etichetta provvisoria è infinita.
+\end{enumerate}
+
+\begin{theorem}[Correttezza di Dijkstra]
+Se tutti i costi sono non negativi, quando l'etichetta di un nodo diventa permanente essa coincide con la sua distanza minima da $s$.
+\end{theorem}
+
+\emph{Idea della dimostrazione.} Se esistesse un cammino più corto verso il nodo scelto $j$, tale cammino dovrebbe attraversare per la prima volta il confine tra $S$ e $T$. Il primo nodo $q\in T$ sul cammino avrebbe un'etichetta non maggiore del costo del prefisso e, per non negatività, non maggiore della distanza alternativa verso $j$. Ciò contraddice la scelta di $j$ come etichetta minima.
+
+Con una coda di priorità binaria, la complessità è $O((n+m)\log n)$; con una semplice scansione delle etichette è $O(n^2+m)$.
+
+\begin{warningbox}
+Dijkstra può produrre risultati errati in presenza di un arco di costo negativo, anche se non esistono cicli negativi. Il problema non è il ciclo: viene meno la garanzia che un'etichetta resa permanente non possa più diminuire.
+\end{warningbox}
+
+\section{Algoritmo di Bellman-Ford}
+
+Bellman-Ford ammette costi negativi e rileva cicli negativi raggiungibili dalla sorgente. Inizializza $d_s=0$, $d_v=+\infty$ per $v\neq s$ e ripete il rilassamento di tutti gli archi per $n-1$ passate.
+
+\begin{proposition}
+Dopo la $k$-esima passata completa, $d_j$ non supera il costo del miglior cammino da $s$ a $j$ che usa al più $k$ archi; nella versione sincrona coincide con tale costo.
+\end{proposition}
+
+Un cammino semplice contiene al più $n-1$ archi. Se dopo $n-1$ passate un arco è ancora rilassabile, esiste un ciclo di costo negativo raggiungibile da $s$.
+
+\begin{enumerate}
+\item Inizializzare distanze e predecessori.
+\item Per $k=1,\ldots,n-1$, rilassare tutti gli archi.
+\item Se una passata non modifica alcuna etichetta, terminare anticipatamente.
+\item Eseguire un'ulteriore scansione: un miglioramento segnala un ciclo negativo.
+\end{enumerate}
+
+La complessità è $O(nm)$. Per problemi da tutte le sorgenti, Bellman-Ford può essere combinato con la riponderazione di Johnson; per grafi densi si usa anche Floyd-Warshall, di complessità $O(n^3)$.
+
+\section{Cicli negativi e illimitatezza}
+
+Occorre distinguere tre situazioni:
+\begin{itemize}
+\item un ciclo negativo non raggiungibile da $s$ non influenza le distanze da $s$;
+\item un ciclo negativo raggiungibile da $s$ rende non definita la distanza finita verso tutti i nodi raggiungibili dal ciclo;
+\item nel problema specifico $s$-$t$, l'illimitatezza richiede anche che $t$ sia raggiungibile dal ciclo.
+\end{itemize}
+
+Questa distinzione coincide con l'interpretazione come flusso a costo minimo: una circolazione negativa può essere ripetuta senza cambiare i bilanci, facendo diminuire indefinitamente il costo.
+
+\section{Albero dei cammini minimi}
+
+Se ogni nodo raggiungibile $j\neq s$ sceglie un predecessore $\pi_j$ tale che
+\[
+d_j=d_{\pi_j}+c_{\pi_jj},
+\]
+gli archi $(\pi_j,j)$ formano un'arborescenza uscente radicata in $s$, detta albero dei cammini minimi, purché non si introducano cicli di predecessori a costo nullo. In caso di distanze multiple l'albero non è unico, anche se il vettore delle distanze lo è.
+
+I vincoli duali si possono riscrivere come costi ridotti
+\[
+\gamma_{ij}=c_{ij}+d_i-d_j\geq0.
+\]
+Sugli archi dell'albero scelto vale $\gamma_{ij}=0$: è la stessa condizione incontrata nel simplesso su reti.
+
+\section{Esempio comparativo}
+
+Consideriamo gli archi
+\[
+(s,a):4,quad (s,b):2,quad (b,a):1,quad (a,t):3,quad (b,t):7.
+\]
+Dijkstra rende permanente prima $b$ con distanza $2$, poi rilassa $(b,a)$ ottenendo $d_a=3$, quindi trova $d_t=6$ tramite $s-b-a-t$. I predecessori sono $\pi_b=s$, $\pi_a=b$, $\pi_t=a$.
+
+Se il costo di $(b,a)$ diventa $-3$, lo stesso cammino costa $2-3+3=2$, ma l'uso di Dijkstra non è più giustificato. Bellman-Ford gestisce correttamente il costo negativo e conferma la distanza $2$ se non vi sono cicli negativi.
+
+\section{Python e NetworkX}
+
+\begin{networkxbox}
+NetworkX usa di norma l'attributo \texttt{weight}. \texttt{single\_source\_dijkstra} richiede pesi non negativi; \texttt{single\_source\_bellman\_ford} ammette pesi negativi; \texttt{shortest\_path} può scegliere il metodo tramite il parametro \texttt{method}.
+\end{networkxbox}
+
+\begin{lstlisting}[style=python,caption={Distanze, cammini e controllo con NetworkX}]
+import networkx as nx
+
+G = nx.DiGraph()
+G.add_weighted_edges_from([
+    ("s", "a", 4), ("s", "b", 2),
+    ("b", "a", 1), ("a", "t", 3),
+    ("b", "t", 7)
+])
+
+dist, paths = nx.single_source_dijkstra(G, "s", weight="weight")
+print(dist["t"], paths["t"])
+
+# Versione che consente pesi negativi
+dist_bf, paths_bf = nx.single_source_bellman_ford(
+    G, "s", weight="weight"
+)
+assert dist == dist_bf
+\end{lstlisting}
+
+Per un DAG è possibile iterare direttamente sui nodi restituiti da \path{nx.topological_sort}. Se un nodo non è raggiungibile, NetworkX può ometterlo dai dizionari oppure segnalare l'assenza di un cammino nelle interrogazioni punto-punto.
+
+\section{Registro delle notazioni}
+
+\begin{notationbox}
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Simbolo & Significato\\
+\midrule
+$s,t$ & origine e destinazione\\
+$c_{ij}$ & costo dell'arco $(i,j)$\\
+$P,C(P)$ & cammino e suo costo\\
+$d_i,d_i^*$ & etichetta corrente e distanza minima da $s$\\
+$\pi_i$ & predecessore del nodo $i$\\
+$S,T$ & nodi permanenti e provvisori in Dijkstra\\
+$\gamma_{ij}$ & $c_{ij}+d_i-d_j$, costo ridotto\\
+$+\infty$ & nodo non ancora raggiunto\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{notationbox}
+
+\section{Errori frequenti}
+\begin{enumerate}
+\item Cambiare segno a $b$: per un'unità da $s$ a $t$ vale $b_s=-1$, $b_t=1$.
+\item Confondere distanza e numero di archi del cammino.
+\item Applicare Dijkstra in presenza di costi negativi.
+\item Aggiornare la distanza senza aggiornare il predecessore.
+\item Dichiarare un ciclo negativo rilevante senza verificarne la raggiungibilità.
+\item Dimenticare che più cammini minimi possono avere lo stesso costo.
+\item Trattare un nodo non raggiungibile come se avesse distanza zero.
+\item Confondere un albero dei cammini minimi con un albero ricoprente di costo minimo.
+\end{enumerate}
+
+\section{Esercizi}
+
+\textbf{Esercizio 7.1 -- Formulazione.}
+Scrivere primale e duale del cammino minimo da $s$ a $t$ e verificare la debole dualità lungo un cammino assegnato.
+
+\medskip\textbf{Esercizio 7.2 -- DAG.}
+Numerare topologicamente un DAG e calcolare distanze e predecessori da una sorgente, ammettendo anche costi negativi.
+
+\medskip\textbf{Esercizio 7.3 -- Dijkstra.}
+Eseguire una tabella delle etichette provvisorie e permanenti e ricostruire l'albero dei cammini minimi.
+
+\medskip\textbf{Esercizio 7.4 -- Bellman-Ford.}
+Mostrare le etichette dopo ogni passata e verificare le equazioni di Bellman alla terminazione.
+
+\medskip\textbf{Esercizio 7.5 -- Ciclo negativo.}
+Aggiungere un arco all'istanza dell'Esercizio 7.4 in modo da creare un ciclo negativo raggiungibile e individuarlo tramite l'ulteriore scansione.
+
+\medskip\textbf{Esercizio 7.6 -- NetworkX.}
+Confrontare Dijkstra e Bellman-Ford su un grafo a pesi non negativi, poi introdurre un peso negativo e verificare quale metodo rimane applicabile.
+
+\section{Sintesi del capitolo}
+\begin{learningbox}
+\begin{itemize}[nosep]
+\item Il cammino minimo si formula inviando un'unità di flusso da $s$ a $t$.
+\item Le variabili duali sono etichette di distanza e soddisfano i vincoli di Bellman.
+\item Il rilassamento migliora un'etichetta e registra il relativo predecessore.
+\item Nei DAG basta un passaggio in ordine topologico, anche con costi negativi.
+\item Dijkstra richiede costi non negativi; Bellman-Ford rileva cicli negativi.
+\item Gli archi dell'albero dei cammini minimi hanno costo ridotto nullo.
+\end{itemize}
+\end{learningbox}
+
+\paragraph{Verso il capitolo successivo.}
+Le relazioni di precedenza tra attività formano naturalmente un DAG. Nel CPM le distanze e i cammini di lunghezza massima diventeranno tempi di completamento e cammini critici.
+
+\end{document}

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ottimizzazione-reti"
+version = "0.1.0"
+description = "Esempi Python per un corso di ottimizzazione su reti"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "networkx>=3.2",
+  "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+notebook = ["jupyterlab>=4.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+

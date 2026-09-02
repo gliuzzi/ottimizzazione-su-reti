@@ -1,0 +1,251 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}\usepackage[utf8]{inputenc}\usepackage[provide=*,italian]{babel}
+\usepackage{lmodern,microtype,geometry}\geometry{margin=2.5cm}
+\usepackage{amsmath,amssymb,amsthm,mathtools,booktabs,array,longtable,xcolor,enumitem,tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usepackage[most]{tcolorbox}\usepackage{listings,hyperref,fancyhdr}
+\definecolor{sapienzared}{RGB}{130,0,36}\definecolor{softred}{RGB}{249,241,243}
+\definecolor{softblue}{RGB}{239,246,252}\definecolor{softgray}{RGB}{245,245,245}\definecolor{codegreen}{RGB}{25,110,65}
+\hypersetup{colorlinks=true,linkcolor=sapienzared,urlcolor=sapienzared,pdftitle={Tecniche reticolari e CPM},pdfauthor={Giampaolo Liuzzi}}
+\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\small Ottimizzazione su Reti}\fancyhead[R]{\small Capitolo 8}\fancyfoot[C]{\thepage}\renewcommand{\headrulewidth}{0.4pt}
+\newtheorem{definition}{Definizione}[section]\newtheorem{theorem}[definition]{Teorema}\newtheorem{proposition}[definition]{Proposizione}
+\newtcolorbox{learningbox}{colback=softred,colframe=sapienzared,title=Obiettivi di apprendimento,fonttitle=\bfseries,boxrule=0.8pt,arc=1.5mm}
+\newtcolorbox{examplebox}[1]{colback=softblue,colframe=blue!55!black,title=#1,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{notationbox}{colback=softgray,colframe=black!55,title=Registro delle notazioni,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{warningbox}{colback=yellow!9,colframe=orange!65!black,title=Attenzione,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\newtcolorbox{networkxbox}{colback=softgray,colframe=black!55,title=Python/NetworkX,fonttitle=\bfseries,boxrule=0.7pt,arc=1.5mm}
+\lstdefinestyle{python}{language=Python,basicstyle=\ttfamily\small,keywordstyle=\color{blue!65!black}\bfseries,commentstyle=\color{codegreen},stringstyle=\color{sapienzared},backgroundcolor=\color{softgray},frame=single,rulecolor=\color{black!25},showstringspaces=false,breaklines=true,columns=fullflexible}
+\newcommand{\V}{\mathcal{V}}\newcommand{\E}{\mathcal{E}}
+\begin{document}\hypersetup{pageanchor=false}
+\begin{titlepage}\centering\vspace*{1.6cm}
+{\color{sapienzared}\rule{\textwidth}{1.2pt}}\\[1.1cm]{\Large Ottimizzazione su Reti}\\[0.35cm]
+{\huge\bfseries Capitolo 8}\\[0.45cm]{\LARGE\bfseries Tecniche reticolari e CPM}\\[1.1cm]
+{\color{sapienzared}\rule{0.72\textwidth}{0.8pt}}\\[1.1cm]
+{\large Corso di Laurea Magistrale in Ingegneria Gestionale}\\[0.25cm]{\large Sapienza Università di Roma}\\[1.2cm]
+{\large Giampaolo Liuzzi}\\[0.25cm]{\normalsize Dipartimento di Ingegneria Informatica, Automatica e Gestionale}
+\vfill{\small Versione preliminare per uso didattico}\end{titlepage}
+\hypersetup{pageanchor=true}\pagenumbering{roman}\tableofcontents\newpage\pagenumbering{arabic}
+
+\begin{learningbox}
+Al termine del capitolo lo studente dovrebbe essere in grado di:
+\begin{itemize}[nosep]
+\item costruire una rete di progetto a partire dalle precedenze;
+\item distinguere rappresentazioni attività-sugli-archi e attività-sui-nodi;
+\item calcolare tempi al più presto e al più tardi;
+\item determinare slittamenti, attività critiche e cammini critici;
+\item interpretare il CPM come cammino massimo su un DAG;
+\item effettuare analisi di sensitività e implementare il calcolo in NetworkX.
+\end{itemize}
+\end{learningbox}
+
+\section{Progetti e relazioni di precedenza}
+Un progetto è composto da attività di durata deterministica. Le relazioni di precedenza specificano quali attività devono essere completate prima che altre possano iniziare. Il \emph{Critical Path Method} (CPM) determina la durata minima del progetto, le date al più presto e al più tardi, le attività critiche e uno o più cammini critici.
+
+Le precedenze devono definire un DAG. Un ciclo significherebbe che un'attività dipende, direttamente o indirettamente, da se stessa e renderebbe il progetto logicamente irrealizzabile.
+
+\section{Due rappresentazioni della rete}
+\subsection{Attività sugli archi}
+Nella rappresentazione AOA (\emph{activity on arc}) i nodi sono eventi e ogni attività è un arco $(i,j)$ di durata $p_{ij}$. L'evento $i$ deve verificarsi prima che l'attività inizi; l'evento $j$ si verifica dopo il completamento di tutte le attività entranti.
+
+Talvolta sono necessarie \emph{attività fittizie} di durata zero per descrivere correttamente le precedenze. La rete viene completata con un unico evento iniziale $0$ e un unico evento finale $f$.
+
+\subsection{Attività sui nodi}
+Nella rappresentazione AON (\emph{activity on node}) ogni attività è un nodo e un arco $a\to b$ indica che $a$ precede immediatamente $b$. Le durate sono attributi dei nodi.
+\begin{center}\begin{tabular}{lll}\toprule Rappresentazione&Attività&Precedenze\\\midrule AOA&archi&eventi e archi anche fittizi\\ AON&nodi&archi del DAG\\\bottomrule\end{tabular}\end{center}
+Nel seguito adottiamo principalmente AOA, coerentemente con la formulazione del corso.
+
+\section{CPM come cammino massimo in un DAG}
+In una rete AOA, un evento può verificarsi soltanto quando tutte le attività entranti sono terminate. Se $t_i$ è il tempo al più presto dell'evento $i$, allora
+\begin{equation}\label{eq:forward}
+t_0=0,\qquad t_j=\max_{(i,j)\in\E}\{t_i+p_{ij}\}.
+\end{equation}
+Sono le equazioni di Bellman per un cammino \emph{massimo}. Poiché la rete è aciclica, le etichette si calcolano una sola volta in ordine topologico. La durata minima del progetto è
+\[T=t_f,\]
+ossia la lunghezza del cammino massimo dall'evento iniziale a quello finale.
+
+\begin{examplebox}{Dai cammini minimi ai cammini massimi}
+Si può porre $c_{ij}=-p_{ij}$ e calcolare un cammino minimo nel DAG. Nel CPM è però più naturale mantenere durate positive e usare direttamente il massimo nella ricorrenza \eqref{eq:forward}.
+\end{examplebox}
+
+\section{Scansione in avanti: tempi al più presto}
+\begin{definition}[Tempo al più presto]
+Il tempo $t_i$ è il primo istante in cui può verificarsi l'evento $i$, cioè il primo istante entro cui possono essere completate tutte le attività afferenti a $i$.
+\end{definition}
+Dato un ordinamento topologico $0,1,\ldots,f$, si pone $t_0=0$ e si applica \eqref{eq:forward}. Per l'attività $(i,j)$:
+\[ES_{ij}=t_i,\qquad EF_{ij}=t_i+p_{ij},\]
+dove $ES$ ed $EF$ sono inizio e fine al più presto. Il tempo minimo di completamento è $C_{ij}=EF_{ij}$.
+
+\section{Scansione all'indietro: tempi al più tardi}
+\begin{definition}[Tempo al più tardi]
+Il tempo $T_i$ è l'ultimo istante in cui può verificarsi l'evento $i$ senza aumentare la durata minima del progetto.
+\end{definition}
+Si pone $T_f=t_f$ e si percorrono i nodi in ordine topologico inverso:
+\begin{equation}\label{eq:backward}
+T_i=\min_{(i,j)\in\E}\{T_j-p_{ij}\}.
+\end{equation}
+Per l'attività $(i,j)$:
+\[LF_{ij}=T_j,\qquad LS_{ij}=T_j-p_{ij}.\]
+In generale $t_i\leq T_i$; $T_i-t_i$ è il margine dell'evento.
+
+\section{Slittamenti e attività critiche}
+\begin{definition}[Slittamento totale]
+Lo slittamento totale dell'attività $(i,j)$ è
+\begin{equation}\label{eq:slack}
+TS_{ij}=LS_{ij}-ES_{ij}=T_j-t_i-p_{ij}.
+\end{equation}
+\end{definition}
+Si ha sempre $TS_{ij}\geq0$. Un ritardo non superiore a $TS_{ij}$ può essere assorbito senza posticipare il progetto, a parità del resto.
+
+\begin{definition}[Attività critica]
+Un'attività è critica se $TS_{ij}=0$. Un suo ritardo positivo aumenta la durata minima del progetto dello stesso ammontare, a parità delle altre durate.
+\end{definition}
+
+Lo slittamento libero è
+\[FS_{ij}=t_j-t_i-p_{ij}.\]
+Esso misura il ritardo ammissibile senza posticipare il tempo al più presto di $j$, e vale $0\leq FS_{ij}\leq TS_{ij}$.
+
+\section{Cammini critici}
+\begin{definition}[Cammino critico]
+Un cammino dall'evento iniziale a quello finale è critico se la somma delle durate delle sue attività è uguale a $T$.
+\end{definition}
+Ogni attività di un cammino critico è critica. Viceversa, l'insieme delle attività critiche può contenere più cammini e ramificazioni: occorre verificarne la continuità da $0$ a $f$.
+
+\begin{proposition}
+Un arco $(i,j)$ appartiene a un cammino critico se
+\[t_i=T_i,\qquad t_j=T_j,\qquad t_j=t_i+p_{ij}.\]
+\end{proposition}
+
+\begin{warningbox}
+Un progetto può avere più cammini critici. Ridurre la durata di una sola attività critica può allora non ridurre la durata del progetto: occorre intervenire su tutti i cammini che restano massimi.
+\end{warningbox}
+
+\section{Esempio completo}
+Consideriamo la rete AOA seguente.
+\begin{center}\small
+\begin{tabular}{cccccccccc}\toprule
+Attività&A&B&C&D&E&F&G&H&I\\
+Arco&$(0,1)$&$(1,2)$&$(1,3)$&$(2,4)$&$(2,5)$&$(3,5)$&$(4,6)$&$(5,6)$&$(6,7)$\\
+Durata&5&7&3&4&5&6&2&8&2\\\bottomrule
+\end{tabular}\end{center}
+
+\subsection{Passaggio in avanti}
+\[\begin{array}{c|rrrrrrrr}i&0&1&2&3&4&5&6&7\\\hline t_i&0&5&12&8&16&17&25&27\end{array}\]
+Per esempio,
+\[t_5=\max\{t_2+5,t_3+6\}=\max\{17,14\}=17,\]
+e $T=t_7=27$.
+
+\subsection{Passaggio all'indietro}
+Ponendo $T_7=27$ si ottiene
+\[\begin{array}{c|rrrrrrrr}i&0&1&2&3&4&5&6&7\\\hline T_i&0&5&12&11&23&17&25&27\end{array}\]
+Per esempio,
+\[T_2=\min\{T_4-4,T_5-5\}=\min\{19,12\}=12.\]
+
+\subsection{Slittamenti}
+\begin{center}\begin{tabular}{crrrrrrrrr}\toprule Attività&A&B&C&D&E&F&G&H&I\\\midrule $TS$&0&0&3&7&0&3&7&0&0\\\bottomrule\end{tabular}\end{center}
+Le attività critiche sono A, B, E, H e I; il cammino critico è
+\[0\xrightarrow{A}1\xrightarrow{B}2\xrightarrow{E}5\xrightarrow{H}6\xrightarrow{I}7,\]
+di durata $5+7+5+8+2=27$.
+
+\section{Rappresentazione AON}
+In una rete AON, per ogni attività $a$ di durata $p_a$:
+\[ES_a=\max_{h\in\operatorname{Pred}(a)}EF_h,\qquad EF_a=ES_a+p_a.\]
+Se $T=\max_a EF_a$, il passaggio all'indietro usa
+\[LF_a=\min_{k\in\operatorname{Succ}(a)}LS_k,\qquad LS_a=LF_a-p_a,\]
+ponendo $LF_a=T$ per le attività terminali. Lo slittamento è $LS_a-ES_a$. È importante non mescolare formule AOA e AON senza dichiarare la rappresentazione.
+
+\section{Sensitività delle durate}
+Se la durata di un'attività non critica aumenta di una quantità non superiore al suo slittamento totale, $T$ non cambia. Superato il margine può emergere un nuovo cammino critico.
+
+Per ridurre $T$ si può accelerare, o \emph{crashare}, un'attività critica sostenendo un costo addizionale. Dopo ogni modifica il CPM va ricalcolato, perché il cammino critico può cambiare o moltiplicarsi.
+
+\begin{examplebox}{Interpretazione del margine}
+Nell'esempio, D ha $TS=7$. Un aumento della sua durata da $4$ a $10$ lascia invariato $T=27$; portandola a $12$ si supera il margine di un giorno e il percorso attraverso D e G diventa più lungo del precedente cammino critico.
+\end{examplebox}
+
+\section{Python e NetworkX}
+\begin{networkxbox}
+NetworkX non espone una funzione CPM completa, ma offre ordinamento topologico e cammino massimo nei DAG. Una breve implementazione produce tempi al più presto, al più tardi e slittamenti.
+\end{networkxbox}
+
+\begin{lstlisting}[style=python,caption={CPM per una rete AOA}]
+import networkx as nx
+
+G = nx.DiGraph()
+activities = [
+ (0,1,"A",5), (1,2,"B",7), (1,3,"C",3),
+ (2,4,"D",4), (2,5,"E",5), (3,5,"F",6),
+ (4,6,"G",2), (5,6,"H",8), (6,7,"I",2)
+]
+for i, j, name, duration in activities:
+    G.add_edge(i, j, name=name, duration=duration)
+
+order = list(nx.topological_sort(G))
+t = {v: float("-inf") for v in G}
+t[order[0]] = 0
+for i in order:
+    for j in G.successors(i):
+        t[j] = max(t[j], t[i] + G[i][j]["duration"])
+
+finish = order[-1]
+T = {v: t[finish] for v in G}
+for i in reversed(order[:-1]):
+    T[i] = min(T[j] - G[i][j]["duration"]
+               for j in G.successors(i))
+
+for i, j, data in G.edges(data=True):
+    slack = T[j] - t[i] - data["duration"]
+    print(data["name"], slack)
+\end{lstlisting}
+In generale occorre gestire più nodi iniziali o finali con eventi fittizi, verificare l'aciclicità e confrontare gli slittamenti in virgola mobile con una tolleranza.
+
+\section{Registro delle notazioni}
+\begin{notationbox}\begin{center}\begin{tabular}{ll}\toprule
+Simbolo&Significato\\\midrule
+$p_{ij}$&durata dell'attività $(i,j)$\\
+$t_i$&tempo al più presto dell'evento $i$\\
+$T_i$&tempo al più tardi dell'evento $i$\\
+$T=t_f$&durata minima del progetto\\
+$ES,EF$&inizio e fine al più presto\\
+$LS,LF$&inizio e fine al più tardi\\
+$C_{ij}$&$t_i+p_{ij}$, completamento al più presto\\
+$TS_{ij}$&$T_j-t_i-p_{ij}$, slittamento totale\\
+$FS_{ij}$&$t_j-t_i-p_{ij}$, slittamento libero\\\bottomrule
+\end{tabular}\end{center}\end{notationbox}
+
+\section{Errori frequenti}
+\begin{enumerate}
+\item Usare il minimo nel passaggio in avanti o il massimo in quello all'indietro.
+\item Confondere $t_i$ con la durata dell'attività.
+\item Calcolare $TS_{ij}$ usando $T_i$ invece di $T_j$.
+\item Dichiarare critica un'attività soltanto perché ha durata elevata.
+\item Confondere attività critica e cammino critico.
+\item Dimenticare attività fittizie o attribuire loro durata positiva.
+\item Mescolare formule AOA e AON.
+\item Assumere che ridurre una sola attività critica riduca sempre il progetto.
+\end{enumerate}
+
+\section{Esercizi}
+\textbf{Esercizio 8.1 -- Costruzione.} Da attività, durate e precedenze costruire sia AON sia una corretta rete AOA.
+
+\medskip\textbf{Esercizio 8.2 -- Passaggio in avanti.} Calcolare ordinamento topologico, $t_i$, $ES$, $EF$ e durata minima.
+
+\medskip\textbf{Esercizio 8.3 -- Passaggio all'indietro.} Calcolare $T_i$, $LS$, $LF$, slittamenti totali e liberi.
+
+\medskip\textbf{Esercizio 8.4 -- Cammini multipli.} Modificare una durata in modo che esistano due cammini critici.
+
+\medskip\textbf{Esercizio 8.5 -- Sensitività.} Per ogni attività non critica determinare il massimo aumento che lascia invariato $T$.
+
+\medskip\textbf{Esercizio 8.6 -- NetworkX.} Implementare l'esempio, verificare la durata con \path{dag_longest_path_length} e produrre una tabella riepilogativa.
+
+\section{Sintesi del capitolo}
+\begin{learningbox}\begin{itemize}[nosep]
+\item Una rete di progetto è un DAG che rappresenta attività e precedenze.
+\item Il passaggio in avanti è un calcolo di cammini massimi in ordine topologico.
+\item Il passaggio all'indietro determina gli ultimi tempi compatibili con $T$.
+\item Lo slittamento totale misura il ritardo assorbibile da un'attività.
+\item Le attività critiche hanno slittamento nullo e formano uno o più cammini critici.
+\item Dopo una variazione delle durate il CPM deve essere ricalcolato.
+\end{itemize}\end{learningbox}
+
+\paragraph{Conclusione.} Il CPM chiude il percorso mostrando come grafi aciclici, ordinamenti topologici, cammini e modelli di flusso forniscano un linguaggio unitario per problemi apparentemente diversi.
+\end{document}
